@@ -1,0 +1,225 @@
+---
+title: "Informe práctico 2"
+output: html_document
+---
+
+**Avalos Noelia.**
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(rvest)
+library(sf)
+library(rnaturalearthdata)
+library(kableExtra)
+library(countrycode)
+library(ggthemr)
+library(patchwork)
+
+knitr::opts_chunk$set(echo = TRUE)
+
+resultados_cmff <- read_csv("https://raw.githubusercontent.com/cienciadedatos/datos-de-miercoles/master/datos/2019/2019-07-17/resultados_cmff.csv")
+
+```
+
+La base de datos `resultados_cmff` contiene información sobre las Copas Mundiales de Fútbol Femenino y su fuente es la [data.world](https://data.world/sportsvizsunday/womens-world-cup-data). En ese sitio encontrarás más datos en inglés si te interesa profundizar.
+
+### **Parte 1**
+
+**Pregunta:**
+
+¿Cómo es la distribución geográfica de los goles por paises? ¿Y la distribución de goles a través del tiempo?
+
+**Introducción:**
+
+En el presente informe se tomará el conjunto de datos "resultados_cmff" proveniente de data.world, el cual contiene información sobre las Copas Mundiales de Fútbol Femenino. Esta base de datos proporciona detalles sobre los equipos, rondas, resultados y los goles anotados en cada torneo.  Nuestro objetivo es analizar la distribución geográfica de goles y la distribución de goles a través del tiempo.  Para responder el primer interrogante utilizaremos las columnas "codigo_pais" para identificar los países y "goles" para calcular la cantidad de goles por país.
+
+Por otro lado, para analizar la distribución de goles a lo largo del tiempo, nos basaremos en la columna "anio" para identificar el año de cada Copa Mundial y en la columna "goles" para contar el número total de goles anotados en ese año.\*
+
+**Enfoque:**
+
+Para encontrar la distribución geográfica de goles por país, realizaremos un choropleth map del planisferio. Dicho mapa mostrará de manera visual e intuitiva la distribución geográfica de los goles por países, donde los países con más goles tendrán un color más intenso, mientras que los países con menos goles tendrán un color más claro. El uso de colores mostrará una representación visual inmediata de la cantidad de goles anotados por cada país. De esta manera podremos identificar de forma rápida y efectiva los países con mayor cantidad de anotaciones.
+
+Luego, utilizaremos una tabla para analizar la distribución de goles a lo largo del tiempo con el fin de tener una visión más cuantitativa y desglosada de los datos. Al agrupar los goles por año y sumarlos, obtendremos una visión general del número total de goles anotados cada año. De esta forma, podremos analizar la evolución de los goles a lo largo de la competencia y detectar posibles tendencias.
+
+**Análisis:**
+
+```{r codigo-distribucion-geografica-goles}
+
+ggthemr("earth")
+url <- "https://simple.wikipedia.org/wiki/Comparison_of_IOC,_FIFA,_and_ISO_3166_country_codes"
+lista_fifa_iso <- url %>% 
+  read_html() %>% 
+  html_table(fill = TRUE) %>% .[[1]] %>% 
+  mutate(ISO = case_when(Country == "England" ~ "ENG", 
+                        Country == "Scotland" ~ "SCT",
+                        TRUE ~ ISO)) %>% 
+  select(FIFA, ISO)
+
+resultados_combinados <- resultados_cmff %>% 
+  left_join(lista_fifa_iso, by = c("codigo_pais" = "FIFA"))
+
+  
+#Se realiza el calculo para conocer la distribucion de goles 
+goles_paises <- resultados_combinados %>% 
+  group_by(ISO) %>% 
+  summarise(cant_goles = sum(goles)) %>% 
+  arrange(desc(cant_goles))
+
+#Llamamos a los mapas necesarios para visualizar
+mapa_mundi <- rnaturalearth::ne_countries(returnclass = "sf") %>% 
+  select(geometry,gu_a3)
+mapa_uk <- rnaturalearth::ne_countries(country = "united kingdom", type = "map_units", returnclass = 'sf') %>% 
+  select(geometry,gu_a3)
+
+mapa_combinado <- rbind(mapa_mundi, mapa_uk)
+mapa_goles <- left_join(mapa_combinado, goles_paises, by = c("gu_a3" = "ISO"))
+```
+
+```{r fig.width= 10, fig.height= 8, distribucion-geografica-cantidad-goles-por-paises, fig.alt="Gráfico de distribución geográfica de goles por equipos en el contexto del mundial de futbol femenino. Se muestra un mapa del mundo con países resaltados en colores diferentes según la cantidad de goles anotados. Los colores más oscuros representan una mayor cantidad de goles. El título del gráfico es 'Distribución geográfica de los goles por equipos'. En el grafico se observa una concentración significativa de goles  en paises como Estados Unidos, Alemania, Noruega y Suecia."}
+
+
+ggplot() +
+  geom_sf(data = mapa_goles, aes(fill = cant_goles), color = "gray") +
+  labs(title = "Distribución geográfica de anotaciones por equipos",
+       fill = "Cantidad de goles",
+       caption = "Fuente: data.world") 
+```
+
+```{r fig.width = 10, goles-por-anio, fig.alt= "El grafico muestra una tabla, donde se presenta la cantidad de goles por año, siendo la primer columna 'Año' y la segunda 'Total de goles'. La tabla cuenta con 8 filas siendo cada una un año y su respectiva cantidad de goles, se resaltan en color naranja los 3 años con mayor cantidad de goles, siendo 2015 con 148, 2019 con 145 y 1999 con 123"}
+
+  
+goles_por_anio <- resultados_cmff %>%
+  group_by(anio) %>% 
+  summarise(total_goles = sum(goles))
+
+    tabla_goles_por_anio <- goles_por_anio %>% 
+      kable(col.names = c("Año","Total de goles"),
+            caption = "Total de goles por año",
+            align = "r") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>% 
+      row_spec(c(3,5,7,8), background = "#C78A59") %>% 
+      column_spec(1, width = "50px")
+    
+tabla_goles_por_anio
+```
+
+**Discusión:**
+
+Visualizando el mapa, podemos ver una gran concentración de color y por lo tanto, de goles en Estados Unidos, seguido de Alemania, Noruega y Suecia. Sin embargo, en la distribución geográfica el color va decreciendo en países como Brasil, Inglaterra, China y Japón, finalmente el color carece de intensidad en los países con menor cantidad de goles.
+
+Al analizar la tabla de distribución de goles a través del tiempo, identificamos los años con un mayor registro de goles: 1999,2007,2015 y 2019, con valores de 123,111,148 y 145 respectivamente, los años restantes tuvieron una menor cantidad de goles anotados. Sin embargo, estas fluctuaciones entre años, no sugieren una tendencia de aumento o disminución sostenida. 
+
+### **Parte 2**
+
+**Pregunta:** ¿Cuál es el indice de victorias a nivel continental? ¿Tiene relación con el desempeño por equipo a través del tiempo?
+
+**Introducción:**
+
+El objetivo de esta parte es identificar los continentes con mayores victorias y analizar si hay equipos de esos continentes que hayan mejorado su desempeño a lo largo del tiempo. Para esto, utilizaremos la columna "resultados" agrupando  por "continente" el número de victorias que tiene dicho equipo. 
+
+En segunda instancia y teniendo en cuenta que el análisis de desempeño de un equipo no siempre se refleja en el resultado de los partidos, como por ejemplo el caso de Brasil en el Mundial Masculino 2022, donde anotaron más goles que Argentina pero no lograron pasar la fase de cuartos de final. Entonces considerando que el desempeño por equipo, puede depender de otras variables, como la estrategia, niveles ofensivos y defensivos, etc. Utilizaremos la columna "goles" para medir dicho desempeño ya que es un "indicador de éxito" del equipo, dividiendo el periodo de tiempo en dos, el primer periodo se dará hasta el año 2007 y el segundo periodo desde 2007
+
+**Enfoque:**
+
+Abordando la primera parte de la pregunta, utilizaremos un gráfico de barras para analizar el desempeño a nivel continental en base a los resultados ya que buscamos comparar de manera clara y directa la cantidad de victorias por continente.
+
+En la segunda parte, realizaremos un gráfico de dispersión donde calcularemos el desempeño por equipo en base al promedio de goles hasta el año 2007 , luego repetiremos el proceso con un segundo gráfico de dispersión desde el año 2007. En última instancia los combinaremos con el fin de comparar el rendimiento por equipos y su evolución a lo largo del tiempo.  
+
+**Análisis:**
+
+```{r codigo-numero-de-victorias-por-continente}
+
+
+url2 <- "https://simple.wikipedia.org/wiki/Comparison_of_IOC,_FIFA,_and_ISO_3166_country_codes"
+lista_pais <- read_html(url2) %>% 
+  html_table(fill = TRUE) %>% .[[1]] %>% 
+  select(FIFA,Country)
+
+resultados_paises <- resultados_cmff %>% 
+  left_join(lista_pais, by = c("codigo_pais" = "FIFA"))
+resultados_cmff_con_continentes <- resultados_paises %>%
+  mutate(continente = ifelse(equipo %in% c("Inglaterra", "Escocia"), "Europe", countrycode(sourcevar = Country, origin = "country.name", destination = "continent",warn = FALSE))
+  )
+# Filtrar y contar las victorias por continente
+victorias_por_continente <- resultados_cmff_con_continentes %>%
+  filter(resultado == "Victoria") %>%
+  group_by(continente) %>%
+  summarise(total_victorias = n())
+```
+
+```{r fig.width = 10,numero-de-victorias-por-continente, fig.alt="Gráfico de barras que muestra el número de victorias por continente. En el eje X se representa el continente y en el eje Y se muestra el total de victorias. Cada barra representa la cantidad de victorias obtenidas por cada continente. El continente con mas victorias es Europa con 127 victorias, seguido de America con 72."}
+# Visualizar los resultados
+ggplot(victorias_por_continente, aes(x = continente, y = total_victorias)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = total_victorias), vjust = -0.5, color = "white", size = 3) +
+  labs(title = "Número de victorias por continente.", x = "Continente", y = "Total de victorias",
+       caption = "Fuente: data.world ")
+
+
+```
+
+```{r codigo-desempenio-por-equipo}
+#Realizamos operaciones para encontrar el desempeño basado en anotaciones hasta el año 2007
+resultados_hasta_2007 <- resultados_combinados %>%
+  filter(anio <= 2007) %>%
+  group_by(equipo) %>%
+  summarise(desempeno = mean(goles)) %>%
+  arrange(desc(desempeno))
+
+#Filtramos el equipo con mejor desempeño
+mejor_equipo_1 <- resultados_hasta_2007 %>%
+  filter(desempeno == max(desempeno))
+
+#Armamos el primer grafico 
+grafico1 <- ggplot(resultados_hasta_2007, aes(desempeno, equipo)) +
+  geom_jitter(position = "identity") +
+  geom_text(data = mejor_equipo_1, aes(label = paste0(round(desempeno, 2))), nudge_y = 1.3, size = 3)+
+  geom_point(data = mejor_equipo_1,shape = 21, color = "white", fill = NA, aes(color = "Mejor Equipo"), size = 3) +
+  labs(title = "Desempeño hasta 2007",
+       x = "Desempeño",
+       y = "Equipo") +
+  theme(plot.title = element_text(size = 10)) +
+  coord_cartesian(xlim = c(0, 3))
+
+#Comenzamos a analizar desde 2007
+resultados_desde_2007 <- resultados_combinados %>%
+  filter(anio >= 2007) %>%
+  group_by(equipo) %>%
+  summarise(desempeno = mean(goles)) %>%
+  arrange(desc(desempeno))
+
+#Filtramos el equipo con mejor desempeño
+mejor_equipo_2 <- resultados_desde_2007 %>%
+  filter(desempeno == max(desempeno))
+
+#Armamos el segundo grafico
+grafico2 <- ggplot(resultados_desde_2007, aes(desempeno, equipo)) +
+  geom_jitter(position = "identity") +
+  geom_text(data = mejor_equipo_2, aes(label = paste0(desempeno)), nudge_y = 1.3, size = 3) +
+  geom_point(data = mejor_equipo_2, shape = 21, color = "white", fill = NA,aes(color = "Mejor Equipo"), size = 3) +
+  labs(title = "Desempeño desde 2007",
+       x = "Desempeño",
+       y = "Equipo") +
+  theme(plot.title = element_text(size = 10)) +
+  coord_cartesian(xlim = c(0, 3)) 
+
+
+```
+
+```{r fig.width= 10,desempenio-por-equipo, fig.alt="Se visualizan  dos graficos de dispersion, que muestran el desempeño en base a las anotaciones por equipo, el primero muestra el desempeño hasta el año 2007 siendo Alemania el equipo con mejor desempeño con un 2.96 de promedio en anotaciones. En el segundo grafico muestra desde el año 2007 en adelante, sumando nuevos paises a la competencia, siendo esta vez Suiza el equipo con mayor desempeño con 2.75 de promedio."}
+# Combinar los gráficos y agregar títulos
+(grafico1 | grafico2) +
+  plot_annotation(title = "Comparativa del desempeño en anotaciones por equipo.",
+                  caption = "Fuente: data.world")
+
+
+  
+```
+
+\`\`\`
+
+**Discusión:**
+
+En el primer grafico podemos ver que el indice de victorias a nivel continental, es superior en Europa y las Americas, siendo Europa, superior con un total de 127 victorias. Aqui vemos que el nivel continental, podemos relacionarlo tambien con la distribucion geografica de goles, si bien Estados Unidos era el equipo con mayor cantidad de goles, los que lo seguian en terminos de cantidad eran paises Europeos.
+
+Cuando analizamos el desempeño por equipo en dos periodos de tiempos determinados, vemos que antes de 2007, el pais con mejor desempeño es Alemania, con un promedio de 2.96 de anotaciones, despues de 2007, vemos que mas paises se suman a la competencia, sin embargo el pais predominante sigue siendo Europeo, en este caso Suiza con un promedio de 2.75. Tambien existen paises que mejoraron su desempeño a lo largo del tiempo como Estados Unidos, Brasil, Italia y otros que descendieron, al igual que Alemania, Noruega y la Republica popular China. Estos resultados sugieren que el desempeño continental está relacionado con el desempeño por equipo a lo largo del tiempo. Los continentes que han demostrado una gran cantidad de victorias a nivel continental también tienen equipos destacados en términos de promedio de goles por partido.
